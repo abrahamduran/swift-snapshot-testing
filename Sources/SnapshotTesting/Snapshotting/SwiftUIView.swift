@@ -52,24 +52,24 @@
         -> Snapshotting
       {
         let config: ViewImageConfig
-        let fillWidth: CGFloat?
+        let fillSize: CGSize?
 
         switch layout {
         #if os(iOS) || os(tvOS)
           case let .device(config: deviceConfig):
             config = deviceConfig
-            fillWidth = nil
+            fillSize = nil
           case let .fillWidth(for: deviceConfig):
             config = .init(safeArea: .zero, size: nil, traits: deviceConfig.traits ?? traits)
-            fillWidth = deviceConfig.size?.width
+            fillSize = deviceConfig.size
         #endif
         case .sizeThatFits:
           config = .init(safeArea: .zero, size: nil, traits: traits)
-          fillWidth = nil
+          fillSize = nil
         case let .fixed(width: width, height: height):
           let size = CGSize(width: width, height: height)
           config = .init(safeArea: .zero, size: size, traits: traits)
-          fillWidth = nil
+          fillSize = nil
         }
 
         return SimplySnapshotting.image(
@@ -79,10 +79,25 @@
 
           let controller: UIViewController
 
-          if let fillWidth {
+          if let fillSize {
             let hostingController = UIHostingController(rootView: view)
-            let proposed = CGSize(width: fillWidth, height: .greatestFiniteMagnitude)
+            if #available(iOS 16.4, tvOS 16.4, *) {
+              hostingController.safeAreaRegions = []
+            } else {
+              hostingController._disableSafeArea = true
+            }
+            // A ScrollView only resolves `containerRelativeFrame` once it has been placed, so lay the
+            // view out in a device-sized window before measuring its height.
+            let dispose = prepareView(
+              config: .init(safeArea: .zero, size: fillSize, traits: config.traits),
+              drawHierarchyInKeyWindow: false,
+              traits: traits,
+              view: hostingController.view,
+              viewController: hostingController
+            )
+            let proposed = CGSize(width: fillSize.width, height: .greatestFiniteMagnitude)
             config.size = hostingController.sizeThatFits(in: proposed)
+            dispose()
             controller = hostingController
           } else if config.size != nil {
             controller = UIHostingController.init(
